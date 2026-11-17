@@ -8,7 +8,8 @@
 
 name: Build OpenWrt
 
-on: 
+on:
+  workflow_dispatch:
   repository_dispatch:
 
 env:
@@ -31,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ["${{ github.event.client_payload.target }}"]
+        target: ["mediatek_filogic"]
         
     steps:
     - name: Checkout
@@ -202,6 +203,23 @@ jobs:
           fi
           find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.revert.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' -R --no-backup-if-mismatch -p1 -F 1 -i '%'"
           find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.patch' ! -name '*.revert.patch' ! -name '*.bin.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' --no-backup-if-mismatch -p1 -F 1 -i '%'"
+
+    - name: Patch NX30 Pro 112M layout
+      run: |
+        cd openwrt
+        python3 - <<'PY'
+        import re
+        p = "target/linux/mediatek/dts/mt7981b-h3c-magic-nx30-pro.dts"
+        s = open(p).read()
+        s = s.replace("reg = <0x0580000 0x4000000>;", "reg = <0x0580000 0x7000000>;")
+        for label in ["pdt_data", "pdt_data_1", "exp", "plugin"]:
+            s = re.sub(
+                r'\n\s*(?:/\* yaffs partition \*/\s*)?partition@[0-9a-f]+\s*\{\s*label = "' + label + r'";.*?\n\s*\};',
+                "", s, flags=re.S)
+        open(p, "w").write(s)
+        PY
+        grep -A5 'partition@580000' target/linux/mediatek/dts/mt7981b-h3c-magic-nx30-pro.dts
+        grep -c 'label = "pdt_data"' target/linux/mediatek/dts/mt7981b-h3c-magic-nx30-pro.dts || true
 
     - name: Defconfig
       run: |
